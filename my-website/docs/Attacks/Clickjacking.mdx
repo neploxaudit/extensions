@@ -1,0 +1,76 @@
+---
+sidebar_position: 4
+---
+
+# Clickjacking
+This chapter is dedicated to Clickjacking in extension windows. I think it is unnecessary to explain what Clickjacking is; if you don't know, you can read about it in this [article](https://aszx87410.github.io/beyond-xss/en/ch5/clickjacking/). Here, we will consider the specifics of Clickjacking for extensions.
+
+# ~~X-Frame-Options~~ web_accessible_resources
+In the world of web applications, the ability to open a site in an iframe is regulated by X-Frame-Options or the CSP rule `frame-ancestors`. In the world of extensions, Chrome handles this with [web_accessible_resources](https://developer.chrome.com/docs/extensions/reference/manifest/web-accessible-resources) in the manifest:
+```JSON
+    "web_accessible_resources": [ {
+        "matches": [ "http://*/*", "https://*/*" ],
+        "resources": [ "assets/example.js", "assets/test.js" ],
+        "use_dynamic_url": false
+     } ]
+```
+In fact, in the original situation, you cannot access an extension resource unless it is listed in `web_accessible_resources` (This cannot be done either with `fetch`, or with `iframe` and `window.open`).
+
+However, there is a very important feature; suppose we have an extension with the following manifest:
+
+```JSON
+    "web_accessible_resources": [ {
+        "matches": [ "http://*/*", "https://*/*" ],
+        "resources": [ "assets/test.html" ],
+        "use_dynamic_url": false
+     } ]
+```
+Based on this manifest, we can open the `assets/test.html` page in an `iframe`. However, suppose `test.html` contains the following content:
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slonser</title>
+    <script>
+        const redirect_param = new URLSearchParams(window.location.search).get('redirect');
+        if (!new URL(redirect_param).origin != origin) {
+            window.location.href = redirect_param;
+        }
+    </script>
+</head>
+<body>
+    
+</body>
+</html>
+```
+This code allows for a redirect to any extension page, and we will still have the link.
+
+In simple terms, `web_accessible_resources` only regulates the initial page opening of the extension; if it performs a redirect, we will continue to have access to the window.
+
+:::tip Note
+This is very important, as an Open Redirect on a window that does not provide benefits from Clickjacking can allow you to perform Clickjacking on a window with settings, cryptocurrency transfers, etc.
+:::
+## history.back()
+Another good technique for obtaining a reference to the window is to redirect to your window! Suppose you managed to get the popup window of the extension to execute:
+```javascript
+window.open(YOUR_SITE)
+```
+Then you will need to create 2 documents on your site:
+1.html:
+```html
+<script>
+window.open('/2.html','_blank','location=yes,height=570,width=520,scrollbars=yes,status=yes')
+window.history.back()
+</script>
+```
+2.html:
+```html
+<script>
+    console.log("Now you have a reference to the extension window")
+</script>
+```
+Now you have a link to the window (which allows you, for example, to send `postMessage` to it), and you also have the ability to clickjacking.
+
+You can also watch this [video](https://www.youtube.com/watch?v=HnI0w156rtw) if you are not familiar with clickjacking, it well demonstrates the impact of clickjacking in extensions.
